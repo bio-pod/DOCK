@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+FROM debian:12.0-slim AS build
+LABEL Description="dock:6.10 build"
+
+ENV TZ=America/Chicago \
+    DEBIAN_FRONTEND=noninteractive
+
+WORKDIR /app
+SHELL ["/bin/bash", "-c"]
+
+COPY ./packages/6.10/dock.6.10_source.tar.gz \
+     ./packages/6.10/dms.zip \
+     ./packages/6.10/sphgen_cpp.1.2.tar.gz /app/
+
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install apt-utils \
+    git wget unzip bzip2 sudo cmake vim build-essential \
+    gcc g++ gfortran make gawk \
+    libz-dev flex yacc python3 python-is-python3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN cd /app && \
+    tar -xzf dock.6.10_source.tar.gz && rm dock.6.10_source.tar.gz && \
+    unzip dms.zip && rm dms.zip && \
+    tar -xzf sphgen_cpp.1.2.tar.gz && rm sphgen_cpp.1.2.tar.gz
+
+RUN cd /app/dock6/install && ./configure gnu && make all
+
+RUN echo "#!/usr/bin/env bash" > /app/test.sh
+RUN echo "cd /app/dock6/install && make test" >> /app/test.sh
+
+FROM debian:12.0-slim AS runtime
+LABEL Description="dock:6.10 runtime"
+
+COPY --from=build /app/dock6 /app/dock6
+COPY --from=build /app/test.sh /app/test.sh
+
+ENV PATH=/app/dock6/bin:${PATH}
+
+ENV TZ=America/Chicago \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get -y --no-install-recommends install apt-utils \
+    git wget unzip bzip2 sudo cmake vim build-essential \
+    gcc g++ gfortran make gawk \
+    libz-dev flex yacc python3 python-is-python3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /mnt
+
